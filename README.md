@@ -1,4 +1,7 @@
 # TLV
+
+[看懂通信协议：自定义通信协议设计之TLV编码应用](https://my.oschina.net/maxid/blog/206546)
+
 tlv编码的java实现，和网上的有点不同<br>
 和网上的不同主要是Tag编码不同：
 网上的TLV中的Tag编码<br>
