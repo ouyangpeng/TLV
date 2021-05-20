@@ -1,6 +1,4 @@
-package com.xtc.sync.tlv;
-
-import com.xtc.sync.log.SyncLogUtil;
+package tlv;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -13,26 +11,29 @@ import java.math.BigInteger;
  */
 public class TLVObject {
 
+    static final String TAG = LogTag.tag("TLVObject");
+
     private ByteArrayOutputStream baos;
 
     public TLVObject() {
         baos = new ByteArrayOutputStream();
     }
 
-    public TLVObject put(int tagValue, long value) {
+    public TLVObject put(int tagValue, long value) throws IOException {
         writeValue(tagValue, TLVUtils.longToByteArray(value));
         return this;
     }
 
-    public TLVObject put(int tagValue, String value) {
-        if (value != null)
+    public TLVObject put(int tagValue, String value) throws IOException {
+        if (value != null) {
             writeValue(tagValue, value.getBytes());
-        else
+        } else {
             writeValue(tagValue, null);
+        }
         return this;
     }
 
-    public TLVObject put(int tagValue, byte[] value) {
+    public TLVObject put(int tagValue, byte[] value) throws IOException {
         writeValue(tagValue, value);
         return this;
     }
@@ -42,19 +43,14 @@ public class TLVObject {
         return this;
     }
 
-    private void writeValue(int tagValue, byte[] value) {
-        TLVEncodeResult result = TLVEncoder.encode(TLVEncoder.PrimitiveFrame, TLVEncoder.PrimitiveData, tagValue, value);
-        try {
-            baos.write(result.toByteArray());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private void writeValue(int tagValue, byte[] value) throws IOException {
+        TLVEncodeResult result = TLVEncoder.encode(TLVEncoder.PRIMITIVE_FRAME, TLVEncoder.PRIMITIVE_DATA, tagValue, value);
+        baos.write(result.toByteArray());
     }
 
     private void writeTLV(int tagValue, TLVObject tlvObject) {
         if (tlvObject != null && tlvObject.size() > 0) {
-            TLVEncodeResult result = TLVEncoder.encode(TLVEncoder.PrimitiveFrame, TLVEncoder.ConstructedData, tagValue,
-                    tlvObject.toByteArray());
+            TLVEncodeResult result = TLVEncoder.encode(TLVEncoder.PRIMITIVE_FRAME, TLVEncoder.CONSTRUCTED_DATA, tagValue, tlvObject.toByteArray());
             try {
                 baos.write(result.toByteArray());
             } catch (IOException e) {
@@ -81,7 +77,7 @@ public class TLVObject {
         try {
             result = TLVDecoder.decode(baos.toByteArray()).toString();
         } catch (Throwable throwable) {
-            SyncLogUtil.e(throwable);
+            throwable.printStackTrace();
         }
         return result;
     }

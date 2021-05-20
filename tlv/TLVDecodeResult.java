@@ -1,4 +1,4 @@
-package com.xtc.sync.tlv;
+package tlv;
 
 import java.util.Arrays;
 import java.util.List;
@@ -33,7 +33,7 @@ public class TLVDecodeResult {
 
     public TLVDecodeResult getResultByTagValue(int tagValue) {
         TLVDecodeResult result = null;
-        if (dataType == TLVEncoder.ConstructedData) {
+        if (dataType == TLVEncoder.CONSTRUCTED_DATA) {
             List<TLVDecodeResult> list = (List<TLVDecodeResult>) value;
             for (TLVDecodeResult r : list) {
                 if (r.getTagValue() == tagValue) {
@@ -122,8 +122,8 @@ public class TLVDecodeResult {
     @Override
     public String toString() {
         String v = null;
-        if (dataType == TLVEncoder.ConstructedData) {
-            v = value.toString();
+        if (dataType == TLVEncoder.CONSTRUCTED_DATA) {
+            v = value != null ? value.toString() : null;
         } else {
             v = Arrays.toString((byte[]) value);
         }

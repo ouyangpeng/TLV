@@ -1,5 +1,6 @@
-package com.xtc.sync.tlv;
+package tlv;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,6 +11,8 @@ import java.util.List;
  */
 public class TLVDecoder {
 
+    private static boolean printLog = false;
+
     /**
      * 解析TLV字节数组
      *
@@ -17,10 +20,9 @@ public class TLVDecoder {
      * @return
      */
     public static TLVDecodeResult decode(byte[] tlvBytes) throws Throwable {
-        List<TLVDecodeResult> list = new ArrayList<>();
         TLVDecodeResult result = null;
         try {
-            result = decodeImpl(tlvBytes, list);
+            result = decodeImpl(tlvBytes);
         } catch (Throwable throwable) {
             throw throwable;
         }
@@ -31,10 +33,9 @@ public class TLVDecoder {
      * 递归逐个解析TLV
      *
      * @param tlvBytes
-     * @param list
      * @return
      */
-    private static TLVDecodeResult decodeImpl(byte[] tlvBytes, List<TLVDecodeResult> list) {
+    private static TLVDecodeResult decodeImpl(byte[] tlvBytes) throws IOException {
         if (tlvBytes == null || tlvBytes.length == 0) {
             return null;
         }
@@ -43,25 +44,83 @@ public class TLVDecoder {
         byte[] tagBytes = new byte[tagBytesSize];
         System.arraycopy(tlvBytes, 0, tagBytes, 0, tagBytesSize);
 
-        // System.out.println("info:"+tlvBytes.length+" "+tagBytesSize);
+        // 截取Length
+        int lengthBytesSize = getLengthBytesSize(tlvBytes, tagBytesSize);
+        byte[] lengthBytes = new byte[lengthBytesSize];
+        System.arraycopy(tlvBytes, tagBytesSize, lengthBytes, 0, lengthBytesSize);
+
+        int valueBytesSize = decodeLength(lengthBytes);
+        byte[] valueBytes = new byte[valueBytesSize];
+        System.arraycopy(tlvBytes, tagBytesSize + lengthBytesSize, valueBytes, 0, valueBytesSize);
+
+        int dataType = decodeDataType(tagBytes);
+        Object value = null;
+        if (dataType == TLVEncoder.CONSTRUCTED_DATA) {
+            int testValueBytesSize = tlvBytes.length - tagBytesSize - lengthBytesSize;
+            if (testValueBytesSize != valueBytesSize) {
+                // 一旦发现tlv数据体的数据长度不匹配，那么此时在tlv编解码没有问题的情况下，可能是返回来不正确的数据内容（可能是网络劫持导致的）
+                System.err.println("tlv data may happen error because of data size is incorrect");
+            }
+            value = decodeMulti(valueBytes);
+        } else {
+            value = valueBytes;
+        }
+        TLVDecodeResult result = new TLVDecodeResult();
+        result.setFrameType(decodeFrameType(tagBytes));
+        result.setDataType(decodeDataType(tagBytes));
+        result.setTagValue(decodeTagValue(tagBytes));
+        result.setLength(decodeLength(lengthBytes));
+        result.setValue(value);
+        return result;
+    }
+
+    private static List<TLVDecodeResult> decodeMulti(byte[] multiTlvBytes) throws IOException {
+        if (multiTlvBytes == null || multiTlvBytes.length == 0) {
+            return null;
+        }
+        TLVByteBuffer tlvByteBuffer = new TLVByteBuffer();
+        tlvByteBuffer.write(multiTlvBytes);
+        List<TLVDecodeResult> list = new ArrayList<TLVDecodeResult>();
+        while (tlvByteBuffer.hasNextTLVData()) {
+            list.add(decodeImpl(tlvByteBuffer.cutNextTLVData()));
+        }
+        return list;
+    }
+
+    /**
+     * 递归逐个解析TLV，此方法有一个bug，会导致tlv数据解析的数组下标越界，因此遗弃
+     *
+     * @return
+     */
+    /*@Deprecated
+    private static TLVDecodeResult decodeImpl(byte[] tlvBytes, List<TLVDecodeResult> list) throws Throwable {
+        if (tlvBytes == null || tlvBytes.length == 0) {
+            return null;
+        }
+        printLog("tlvBytes length:" + tlvBytes.length);
+        // 截取Tag
+        int tagBytesSize = getTagBytesSize(tlvBytes);
+        byte[] tagBytes = new byte[tagBytesSize];
+        printLog("tagBytesSize:" + tagBytesSize);
+        System.arraycopy(tlvBytes, 0, tagBytes, 0, tagBytesSize);
 
         // 截取Length
         int lengthBytesSize = getLengthBytesSize(tlvBytes, tagBytesSize);
         byte[] lengthBytes = new byte[lengthBytesSize];
-        System.arraycopy(tlvBytes, tagBytesSize, lengthBytes, 0,
-                lengthBytesSize);
+        printLog("lengthBytesSize:" + lengthBytesSize);
+        System.arraycopy(tlvBytes, tagBytesSize, lengthBytes, 0, lengthBytesSize);
 
         // 截取Value
         int valueBytesSize = decodeLength(lengthBytes);
         byte[] valueBytes = new byte[valueBytesSize];
-        System.arraycopy(tlvBytes, tagBytesSize + lengthBytesSize, valueBytes,
-                0, valueBytesSize);
+        printLog("valueBytesSize:" + valueBytesSize);
+        System.arraycopy(tlvBytes, tagBytesSize + lengthBytesSize, valueBytes, 0, valueBytesSize);
 
         // 解析数据
-        TLVDecodeResult result = decodeFirstTLV(tagBytes, lengthBytes,
-                valueBytes);
-        if (result != null)
+        TLVDecodeResult result = decodeFirstTLV(tagBytes, lengthBytes, valueBytes);
+        if (result != null) {
             list.add(result);
+        }
 
         int totalSize = tlvBytes.length;
         int firstTLVSize = tagBytesSize + lengthBytesSize + valueBytesSize;
@@ -69,6 +128,12 @@ public class TLVDecoder {
             decodeSecondTLV(tlvBytes, firstTLVSize, list);
         }
         return result;
+    }*/
+
+    private static void printLog(String text) {
+        if (printLog) {
+            System.out.print(text);
+        }
     }
 
     /**
@@ -79,7 +144,8 @@ public class TLVDecoder {
      * @param valueBytes
      * @return
      */
-    private static TLVDecodeResult decodeFirstTLV(byte[] tagBytes, byte[] lengthBytes, byte[] valueBytes) {
+    /*@Deprecated
+    private static TLVDecodeResult decodeFirstTLV(byte[] tagBytes, byte[] lengthBytes, byte[] valueBytes) throws Throwable {
         int dataType = decodeDataType(tagBytes);
         TLVDecodeResult result = new TLVDecodeResult();
         result.setFrameType(decodeFrameType(tagBytes));
@@ -87,20 +153,21 @@ public class TLVDecoder {
         result.setTagValue(decodeTagValue(tagBytes));
         result.setLength(decodeLength(lengthBytes));
         if (dataType == TLVEncoder.ConstructedData) {
-            List<TLVDecodeResult> childList = new ArrayList<TLVDecodeResult>();
+            printLog("TLVDecodeResult dataType:" + dataType);
+            List<TLVDecodeResult> childList = new ArrayList<>();
             decodeImpl(valueBytes, childList);
             result.setValue(childList);
         } else {
             result.setValue(valueBytes);
         }
 
-		/*
+		*//*
          * if (result.getTagValue() == 0) {
 		 * System.err.println("RID:"+result.getIntValue()); }
-		 */
+		 *//*
 
         return result;
-    }
+    }*/
 
     /**
      * 解析同级V中的第二个TLV
@@ -109,13 +176,14 @@ public class TLVDecoder {
      * @param firstTLVSize
      * @param list
      */
-    private static TLVDecodeResult decodeSecondTLV(byte[] tlvBytes, int firstTLVSize, List<TLVDecodeResult> list) {
+    /*@Deprecated
+    private static TLVDecodeResult decodeSecondTLV(byte[] tlvBytes, int firstTLVSize, List<TLVDecodeResult> list) throws Throwable {
         int totalSize = tlvBytes.length;
         byte[] nextBytes = new byte[totalSize - firstTLVSize];
         System.arraycopy(tlvBytes, firstTLVSize, nextBytes, 0, totalSize - firstTLVSize);
         TLVDecodeResult result = decodeImpl(nextBytes, list);
         return result;
-    }
+    }*/
 
     /**
      * 获取到全部的TLV数量
@@ -147,7 +215,7 @@ public class TLVDecoder {
         result.setDataType(dataType);
         result.setTagValue(decodeTagValue(tagBytes));
         result.setLength(decodeLength(lengthBytes));
-        if (dataType == TLVEncoder.ConstructedData) {
+        if (dataType == TLVEncoder.CONSTRUCTED_DATA) {
             size = size + getTLVSize(valueBytes);
         } else {
             // size++;
@@ -174,7 +242,7 @@ public class TLVDecoder {
         for (byte b : tlvBytes) {
             length++;
             int test = b & 0x80;
-            if (test == 0) {
+            if (test == 0x00) {
                 return length;
             }
         }
@@ -206,7 +274,7 @@ public class TLVDecoder {
      * @return
      */
     public static int decodeFrameType(byte[] tagBytes) {
-        return TLVEncoder.PrivateFrame & tagBytes[0];
+        return TLVEncoder.PRIVATE_FRAME & tagBytes[0];
     }
 
     /**
@@ -216,7 +284,7 @@ public class TLVDecoder {
      * @return
      */
     public static int decodeDataType(byte[] tagBytes) {
-        return TLVEncoder.ConstructedData & tagBytes[0];
+        return TLVEncoder.CONSTRUCTED_DATA & tagBytes[0];
     }
 
     /**
@@ -236,7 +304,6 @@ public class TLVDecoder {
             //低位到高位解析
             result = decodeValueFromLowToHighBit(tagBytes);
         }
-        // System.out.println(result);
         return result;
     }
 
@@ -282,7 +349,8 @@ public class TLVDecoder {
         } else {
             result |= 0x7f & lengthBytes[0];
             for (int i = 1; i < lengthBytes.length; i++) {
-                result |= (0x7f & lengthBytes[i]) << 7 * (lengthBytes.length - i);
+//                result |= (0x7f & lengthBytes[i]) << 7 * (lengthBytes.length - i);
+                result |= (0x7f & lengthBytes[i]) << 7 * i;
             }
         }
         return result;

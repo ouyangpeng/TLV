@@ -1,4 +1,4 @@
-package com.xtc.sync.tlv;
+package tlv;
 
 import java.util.Arrays;
 
